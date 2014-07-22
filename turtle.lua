@@ -64,7 +64,9 @@ function SpoTriple._new(subject, predicateObjectList)
 end
 
 function PrefixedName._new(prefix, name)
-   return _newObject(PrefixedName, {prefix=prefix, name=name})
+   -- name can be `nil' when the construct is something like
+   -- "rdf:". We use the same parsing code for PNAME_NS as PNAME_LN
+   return _newObject(PrefixedName, {prefix=prefix, name=name or ""})
 end
 
 function PrefixedName:__tostring()
@@ -195,10 +197,10 @@ local STRING_LITERAL_QUOTE = P'"'*C((R"\x00\xff"-S"\x22\x5C\x0a\x0d"+ECHAR+UCHAR
 local STRING_LITERAL_SINGLE_QUOTE = P"'"*C((R"\x00\xff"-S"\x27\x5C\x0a\x0d"+ECHAR+UCHAR)^0)*P"'"
 
 -- [24]STRING_LITERAL_LONG_SINGLE_QUOTE::="'''" (("'" | "''")? ([^'\] | ECHAR | UCHAR))* "'''"
-local STRING_LITERAL_LONG_SINGLE_QUOTE = P"'''"*C(((P"'"+P"''")^-1*(R"\x00\xff"-S"'\\"+ECHAR+UCHAR))^0)*P"'''"
+local STRING_LITERAL_LONG_SINGLE_QUOTE = P"'''"*C((P"'"^-2*(re.compile("[^'\\]")+ECHAR+UCHAR))^0)*P"'''"
 
 -- [25]STRING_LITERAL_LONG_QUOTE::='"""' (('"' | '""')? ([^"\] | ECHAR | UCHAR))* '"""'
-local STRING_LITERAL_LONG_QUOTE = P'"""'*C(((P'"'+P'""')^-1*(re.compile('[^"\\]')+ECHAR+UCHAR))^0)*P'"""'
+local STRING_LITERAL_LONG_QUOTE = P'"""'*C((P'"'^-2*(re.compile('[^"\\]')+ECHAR+UCHAR))^0)*P'"""'
 
 -- [17]String::=STRING_LITERAL_QUOTE | STRING_LITERAL_SINGLE_QUOTE | STRING_LITERAL_LONG_SINGLE_QUOTE | STRING_LITERAL_LONG_QUOTE
 -- ***NOTE*** ORDER IS IMPORTANT HERE - long-quote forms have to come before single-quote forms

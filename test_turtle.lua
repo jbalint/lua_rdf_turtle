@@ -317,7 +317,6 @@ describe("Turtle Parsing of Example Documents", function()
 					   local parsed
 					   it("should parse the document", function ()
 							 parsed = turtle.parse(test5)
-							 _dump(parsed)
 							 assert_equal("table", type(parsed))
 							 assert_equal("table", type(parsed[1]))
 							 assert_equal(5, #parsed)
@@ -331,6 +330,185 @@ describe("Turtle Parsing of Example Documents", function()
 							 assert_equal("3single quote string", str)
 							 str = parsed[5].predicateObjectList[1].objectList[1].value
 							 assert_equal("4triple single quote string", str)
+					   end)
+			end)
+end)
+
+
+-- assigned locally in test, pass here before calling external
+-- functions
+local Massert_equal
+
+local function testPrefix(s, iri, prefix)
+   Massert_equal("Prefix", s:nodeType())
+   Massert_equal(prefix, s.prefix)
+   Massert_equal(iri, s.iriRef.iri)
+end
+
+local function testPrefixedName(s, prefix, name)
+   Massert_equal("PrefixedName", s:nodeType())
+   Massert_equal(prefix, s.prefix)
+   Massert_equal(name, s.name)
+end
+
+local function testIriRef(s, iri)
+   Massert_equal("IriRef", s:nodeType())
+   Massert_equal(iri, s.iri)
+end
+
+local function testParseAndSerialize(ttl_string)
+   local s = turtle.parse(ttl_string)
+   Massert_equal("table", type(s[1]), "parse should produce a list of tables")
+   local serialized = turtleparse.serialize(s)
+   Massert_equal(ttl_string, serialized)
+end
+
+describe("Basic Turtle Parsing", function ()
+
+			context("strings", function ()
+					   it("should parse simple strings", function ()
+							 local s = turtle.parse('test:X a "abc".')
+							 assert_equal("abc", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("should un-escape embedded escaped quotes", function ()
+							 local s = turtle.parse('test:X a "a\\\"bc".')
+							 assert_equal("a\"bc", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+			end)
+
+			context("long strings", function ()
+					   it("should parse long strings", function ()
+							 local s = turtle.parse([[test:X a """blablabla""".]])
+							 assert_equal("blablabla", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("should process escapes in long strings", function ()
+							 -- \n appears literally when inside [[ ... ]]
+							 local s = turtle.parse([[test:X a """bla\nbla\nbla""".]])
+							 assert_equal("bla\nbla\nbla", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("should unescape and support two quotes", function ()
+							 local s = turtle.parse([[test:X a """hey \"BOY\"z he said "hi" two quotes "" cool """.]])
+							 assert_equal("hey \"BOY\"z he said \"hi\" two quotes \"\" cool ", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("should process other escapes and handle single quotes", function ()
+							 local s = turtle.parse([[test:X a """hey \"BOY"z ''" bsaid
+two \tquotes\ncool """.]])
+							 assert_equal("hey \"BOY\"z ''\" bsaid\ntwo 	quotes\ncool ", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("support many quotes", function ()
+							 local s = turtle.parse([[test:X a """string inside a string -> ""\"x""\"""".]])
+							 assert_equal("string inside a string -> \"\"\"x\"\"\"", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+			end)
+
+			context("long string specific tests", function ()
+					   it("should support single quote long string in parser")
+					   it("three quotes", function ()
+							 local s = turtle.parse([[<s> <p> """ ""\" """ .]])
+							 assert_equal(" \"\"\" ", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("should support unicode escapes in parser \\u0061 etc")
+					   it("three quotes no space", function ()
+							 local s = turtle.parse([[<s> <p> """""\"""" .]])
+							 assert_equal("\"\"\"", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+			end)
+
+			-- language tags are recognized by the parser, but not
+			-- included in the parse tree output
+			context("language tags", function ()
+					   it("should parse simple language tags", function ()
+							 local s = turtle.parse([[:a :b "abc"@ru.]])
+							 assert_equal("abc", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+					   it("should parse all language tags", function ()
+							 -- fixed this issue on dc-1.1.ttl, which
+							 -- uses en-US
+
+							 -- the turtle grammar I used didn't
+							 -- define the second part as supporting
+							 -- uppercase letters
+							 local s = turtle.parse([[:a :b "abcXYZ"@en-US.]])
+							 assert_equal("abcXYZ", s[1].predicateObjectList[1].objectList[1].value)
+					   end)
+			end)
+
+			-- basic collection support, this is not decoded in
+			-- RDF-list style by the turtle parser
+			context("collections", function ()
+					   it("should parse basic collections", function ()
+							 local s = turtle.parse([[:a :b ( "apple" "banana" ) .]])
+							 assert_equal("Collection", s[1].predicateObjectList[1].objectList[1]:nodeType())
+							 assert_equal(2, #s[1].predicateObjectList[1].objectList[1])
+							 assert_equal("apple", s[1].predicateObjectList[1].objectList[1][1].value)
+							 assert_equal("banana", s[1].predicateObjectList[1].objectList[1][2].value)
+					   end)
+					   it("should parse collections with prefixed names and irirefs", function ()
+							 Massert_equal = assert_equal
+							 local s = turtle.parse([[:a :b ( :apple "banana" <http://example.org/stuff/1.0/Pear> ) .]])
+							 assert_equal("Collection", s[1].predicateObjectList[1].objectList[1]:nodeType())
+							 assert_equal(3, #s[1].predicateObjectList[1].objectList[1])
+							 testPrefixedName(s[1].predicateObjectList[1].objectList[1][1], "", "apple")
+							 assert_equal("banana", s[1].predicateObjectList[1].objectList[1][2].value)
+							 testIriRef(s[1].predicateObjectList[1].objectList[1][3], "http://example.org/stuff/1.0/Pear")
+							 -- end
+							 Massert_equal = nil
+					   end)
+			end)
+
+			context("miscellaneous", function ()
+					   it("should parse prefix-only prefixed names", function ()
+							 Massert_equal = assert_equal
+							 local s = turtle.parse([[rdf:type  rdfs:isDefinedBy rdf: .]])
+							 assert_equal(1, #s)
+							 assert_equal(1, #s[1].predicateObjectList)
+							 assert_equal(1, #s[1].predicateObjectList[1].objectList)
+							 testPrefixedName(s[1].subject, "rdf", "type")
+							 testPrefixedName(s[1].predicateObjectList[1].predicate, "rdfs", "isDefinedBy")
+							 testPrefixedName(s[1].predicateObjectList[1].objectList[1], "rdf", "")
+							 -- end
+							 Massert_equal = nil
+					   end)
+			end)
+end)
+
+describe("Serialization - SKIPPED", function ()
+			-- TODO: serialization tests are very incomplete
+			context("serialization", function ()
+					   if true then
+						  return
+					   end
+					   it("should serialize unlabeled bnodes", function ()
+							 -- we just use the same string and test
+							 -- the parse+serialization is identical
+							 -- to the original
+							 -- (needs the newline as the serializer
+							 -- adds it)
+							 local ttl_string = 'bsbase:Clear bsbase:homepage [rdf:type bibo:Webpage; bibo:uri "http://frdcsa.org/frdcsa/internal/clear/"^^xsd:string].\n'
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(ttl_string)
+							 Massert_equal = nil
+					   end)
+					   it("should handle embedded quotes", function ()
+							 local ttl_string = 'bstest:xyz skos:editorialNote "based on \\\"Heinz Steals the Drug\\\""^^xsd:string.\n'
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(ttl_string)
+							 Massert_equal = nil
+					   end)
+					   it("should handle lists", function ()
+							 local ttl_string = 'bstest:something bstest:hasThese ( bstest:a bstest:b bstest:c ).\n'
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(ttl_string)
+							 Massert_equal = nil
+					   end)
+					   it("should use triple-quotes for multi-line strings", function ()
+							 -- it comes out with three quotes because
+							 -- of the embedded newlines, not because
+							 -- it's parsed with three quotes
+							 local ttl_string = 'bstest:something bstest:hasX """jess\nis\nhere""".\n'
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(ttl_string)
+							 Massert_equal = nil
 					   end)
 			end)
 end)
