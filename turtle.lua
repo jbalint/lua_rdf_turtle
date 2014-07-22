@@ -30,12 +30,13 @@ local SpoTriple = {classname="SpoTriple"}
 local PrefixedName = {classname="PrefixedName"}
 local PredicateObject = {classname="PredicateObject"}
 local TypedString = {classname="TypedString"}
+local Collection = {classname="Collection"}
 
 local function _nodeType(obj)
    return getmetatable(obj).classname
 end
 
-local classes = {IriRef, Bnode, Prefix, SpoTriple, PrefixedName, PredicateObject, TypedString}
+local classes = {IriRef, Bnode, Prefix, SpoTriple, PrefixedName, PredicateObject, TypedString, Collection}
 for idx, class in ipairs(classes) do
    class.__index = class
    class.nodeType = _nodeType
@@ -82,6 +83,11 @@ end
 
 function TypedString._new(datatype, value)
    return _newObject(TypedString, {datatype=datatype, value=value})
+end
+
+function Collection._new(values)
+   -- the raw list is used as the collection - no k/v wrapper
+   return _newObject(Collection, values)
 end
 
 local function _setBase(iriRef)
@@ -147,8 +153,7 @@ local ANON = P"["*WS^0*P"]"
 local IRIREF = P"<"*((re.compile("[^\x00-\x20<>\"{}|^`\\]")+UCHAR)^0/IriRef._new)*P">"
 
 -- [139s]PNAME_NS::=PN_PREFIX? ':'
--- TODO verify it's correct
-local PNAME_NS = C(PN_PREFIX)*P":"
+local PNAME_NS = C(PN_PREFIX+P"")*P":"
 
 -- [140s]PNAME_LN::=PNAME_NS PN_LOCAL
 local PNAME_LN = PNAME_NS*PN_LOCAL
@@ -231,7 +236,7 @@ local literal = RDFLiteral+NumericLiteral+BooleanLiteral
 local function makeGrammar(elem)
    return P{elem;
 			-- [15]collection::='(' object* ')'
-			collection = P"("*JBWS0*(V"object"*JBWS0)^0*P")",
+			collection = P"("*JBWS0*Ct((V"object"*JBWS0)^0)*P")"/Collection._new,
 
 			-- [12]object::=iri | BlankNode | collection | blankNodePropertyList | literal
 			object = iri+BlankNode+V"collection"+V"blankNodePropertyList"+literal,
