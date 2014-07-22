@@ -10,9 +10,10 @@ describe("Turtle Parsing of Example Documents", function()
                                @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
                                @prefix dc: <http://purl.org/dc/elements/1.1/> .
                                @prefix ex: <http://example.org/stuff/1.0/> .
-                               
+
                                ex:jess a ex:NonExistingClass ; a ex:AnotherClass .
                                ex:jess2 a ex:NonExistingClass , ex:AnotherClass .
+# TODO need to handle the nested Bnode
                                <http://www.w3.org/TR/rdf-syntax-grammar>
                                  dc:title "RDF/XML Syntax Specification (Revised)" ;
                                  ex:editor [
@@ -25,6 +26,7 @@ describe("Turtle Parsing of Example Documents", function()
 							 parsed = turtle.parse(test1)
 							 assert_equal("table", type(parsed))
 							 assert_equal("table", type(parsed[1]))
+							 --assert_equal(
 					   end)
 			end)
 end)
