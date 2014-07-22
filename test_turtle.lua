@@ -27,6 +27,7 @@ describe("Turtle Parsing of Example Documents", function()
 					   it("should parse the document", function ()
 							 parsed = turtle.parse(test1)
 							 assert_equal("table", type(parsed))
+							 assert_equal("RdfDoc", parsed:nodeType())
 							 assert_equal("table", type(parsed[1]))
 							 assert_equal(6, #parsed)
 					   end)
@@ -334,7 +335,6 @@ describe("Turtle Parsing of Example Documents", function()
 			end)
 end)
 
-
 -- assigned locally in test, pass here before calling external
 -- functions
 local Massert_equal
@@ -358,8 +358,8 @@ end
 
 local function testParseAndSerialize(ttl_string)
    local s = turtle.parse(ttl_string)
-   Massert_equal("table", type(s[1]), "parse should produce a list of tables")
-   local serialized = turtleparse.serialize(s)
+   Massert_equal("RdfDoc", s:nodeType(), "parse should produce a list of tables")
+   local serialized = turtle.serialize(s)
    Massert_equal(ttl_string, serialized)
 end
 
@@ -389,6 +389,8 @@ describe("Basic Turtle Parsing", function ()
 					   it("should unescape and support two quotes", function ()
 							 local s = turtle.parse([[test:X a """hey \"BOY\"z he said "hi" two quotes "" cool """.]])
 							 assert_equal("hey \"BOY\"z he said \"hi\" two quotes \"\" cool ", s[1].predicateObjectList[1].objectList[1].value)
+							 s = turtle.parse([[test:X a """hey \"BOY\"z he said "hi" two quotes "" cool """^^xsd:string.]])
+							 assert_equal("hey \"BOY\"z he said \"hi\" two quotes \"\" cool ", s[1].predicateObjectList[1].objectList[1].value)
 					   end)
 					   it("should process other escapes and handle single quotes", function ()
 							 local s = turtle.parse([[test:X a """hey \"BOY"z ''" bsaid
@@ -412,6 +414,24 @@ two \tquotes\ncool """.]])
 							 local s = turtle.parse([[<s> <p> """""\"""" .]])
 							 assert_equal("\"\"\"", s[1].predicateObjectList[1].objectList[1].value)
 					   end)
+			end)
+
+			context("native-typed strings", function ()
+					   it("should handle numeric types", function ()
+							 local s = turtle.parse([[<s> <p> 1.0e0. # parses of double because of exponent
+                                                      <s> <p> 1.
+                                                      <s> <p> 1.0. # parses as decimal because of no exponent]])
+							 assert_equal(3, #s)
+							 assert_equal("1.0e0", s[1].predicateObjectList[1].objectList[1].value)
+							 assert_equal('"1.0e0"^^xsd:double', tostring(s[1].predicateObjectList[1].objectList[1]))
+							 assert_equal("1", s[2].predicateObjectList[1].objectList[1].value)
+							 assert_equal('"1"^^xsd:integer', tostring(s[2].predicateObjectList[1].objectList[1]))
+							 assert_equal("1.0", s[3].predicateObjectList[1].objectList[1].value)
+							 assert_equal('"1.0"^^xsd:decimal', tostring(s[3].predicateObjectList[1].objectList[1]))
+					   end)
+			end)
+
+			context("custom-typed strings", function ()
 			end)
 
 			-- language tags are recognized by the parser, but not
@@ -475,28 +495,38 @@ end)
 describe("Serialization - SKIPPED", function ()
 			-- TODO: serialization tests are very incomplete
 			context("serialization", function ()
-					   if true then
-						  return
-					   end
 					   it("should serialize unlabeled bnodes", function ()
 							 -- we just use the same string and test
 							 -- the parse+serialization is identical
 							 -- to the original
 							 -- (needs the newline as the serializer
 							 -- adds it)
-							 local ttl_string = 'bsbase:Clear bsbase:homepage [rdf:type bibo:Webpage; bibo:uri "http://frdcsa.org/frdcsa/internal/clear/"^^xsd:string].\n'
+							 -- same with all ending in ;
+							 local ttl_string = 'bsbase:Clear bsbase:homepage [rdf:type bibo:Webpage;bibo:uri "http://frdcsa.org/frdcsa/internal/clear/"^^xsd:string;];.\n'
 							 Massert_equal = assert_equal
 							 testParseAndSerialize(ttl_string)
 							 Massert_equal = nil
 					   end)
 					   it("should handle embedded quotes", function ()
-							 local ttl_string = 'bstest:xyz skos:editorialNote "based on \\\"Heinz Steals the Drug\\\""^^xsd:string.\n'
+							 local ttl_string = 'bstest:xyz skos:editorialNote "based on \\\"Heinz Steals the Drug\\\""^^xsd:string;.\n'
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(ttl_string)
+							 Massert_equal = nil
+					   end)
+					   it("should handle multiple objects per predicate", function ()
+							 local ttl_string = ':xyz :has :a, :b, :c;.\n'
 							 Massert_equal = assert_equal
 							 testParseAndSerialize(ttl_string)
 							 Massert_equal = nil
 					   end)
 					   it("should handle lists", function ()
-							 local ttl_string = 'bstest:something bstest:hasThese ( bstest:a bstest:b bstest:c ).\n'
+							 local ttl_string = 'bstest:something bstest:hasThese ( bstest:a bstest:b bstest:c);.\n'
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(ttl_string)
+							 Massert_equal = nil
+					   end)
+					   it("should handle RDF-style lists (nested anonymous nodes)", function ()
+							 local ttl_string = "bstest:something bstest:hasThese [rdf:first bstest:a;rdf:rest [rdf:first bstest:b;rdf:rest [rdf:first bstest:c;rdf:rest rdf:nil;];];];.\n"
 							 Massert_equal = assert_equal
 							 testParseAndSerialize(ttl_string)
 							 Massert_equal = nil
@@ -505,7 +535,7 @@ describe("Serialization - SKIPPED", function ()
 							 -- it comes out with three quotes because
 							 -- of the embedded newlines, not because
 							 -- it's parsed with three quotes
-							 local ttl_string = 'bstest:something bstest:hasX """jess\nis\nhere""".\n'
+							 local ttl_string = 'bstest:something bstest:hasX """jess\nis\nhere"""^^xsd:string;.\n'
 							 Massert_equal = assert_equal
 							 testParseAndSerialize(ttl_string)
 							 Massert_equal = nil
