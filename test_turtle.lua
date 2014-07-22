@@ -246,7 +246,7 @@ describe("Turtle Parsing of Example Documents", function()
 			end)
 
 			---------------------------------------
-			context("test document 4", function ()
+			context("test document 4 - collections, pure rdf", function ()
 					   local test4 = [[
                                @prefix : <http://example.org/stuff/1.0/> .
                                @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -259,15 +259,48 @@ describe("Turtle Parsing of Example Documents", function()
 					   local parsed
 					   it("should parse the document", function ()
 							 parsed = turtle.parse(test4)
-							 --_dump(parsed)
 							 assert_equal("table", type(parsed))
 							 assert_equal("table", type(parsed[1]))
 							 assert_equal(3, #parsed)
 					   end)
+					   it("should represent the collection properly", function ()
+							 local triple = parsed[3]
+							 assert_equal("SpoTriple", triple:nodeType())
+							 assert_equal(1, #triple.predicateObjectList)
+							 local predObj = triple.predicateObjectList[1]
+							 assert_equal(1, #predObj.objectList)
+							 -- into the [rdf:first ...] node
+							 local obj = predObj.objectList[1]
+							 assert_equal("Bnode", obj:nodeType())
+							 assert_equal(2, #obj.predicateObjectList)
+							 predObj = obj.predicateObjectList[1]
+							 assert_equal("rdf:first", tostring(predObj.predicate))
+							 assert_equal(1, #predObj.objectList)
+							 assert_equal("apple", predObj.objectList[1].value)
+							 predObj = obj.predicateObjectList[2]
+							 assert_equal("rdf:rest", tostring(predObj.predicate))
+							 assert_equal(1, #predObj.objectList)
+							 -- into the [rdf:rest ...] node
+							 obj = predObj.objectList[1]
+							 assert_equal("Bnode", obj:nodeType())
+							 assert_equal(2, #obj.predicateObjectList)
+							 predObj = obj.predicateObjectList[1]
+							 assert_equal("rdf:first", tostring(predObj.predicate))
+							 assert_equal(1, #predObj.objectList)
+							 assert_equal("banana", predObj.objectList[1].value)
+							 predObj = obj.predicateObjectList[2]
+							 assert_equal("rdf:rest", tostring(predObj.predicate))
+							 assert_equal(1, #predObj.objectList)
+							 assert_equal("rdf:nil", tostring(predObj.objectList[1]))
+					   end)
 			end)
 
 			---------------------------------------
-			context("test document 5", function ()
+			context("test document 5 - strings", function ()
+					   -- the \n are represented by two-bytes
+					   -- (literally) in Lua long strings - but
+					   -- replaced by single-byte newlines in Turtle
+					   -- parsing
 					   local test5 = [[
                                @prefix : <http://example.org/stuff/1.0/> .
 
@@ -276,15 +309,28 @@ describe("Turtle Parsing of Example Documents", function()
                                :a :b """2The first line
                                The second line
                                  more""" .
+
+                               :a :b '3single quote string'.
+
+                               :a :b '''4triple single quote string'''.
                                ]]
 					   local parsed
 					   it("should parse the document", function ()
 							 parsed = turtle.parse(test5)
-							 --_dump(parsed)
+							 _dump(parsed)
 							 assert_equal("table", type(parsed))
 							 assert_equal("table", type(parsed[1]))
-							 -- TODO test broken
-							 --assert_equal(3, #parsed)
+							 assert_equal(5, #parsed)
+					   end)
+					   it("should parse strings correctly", function ()
+							 local str = parsed[2].predicateObjectList[1].objectList[1].value
+							 assert_equal("1The first line\nThe second line\n  more", str)
+							 str = parsed[3].predicateObjectList[1].objectList[1].value
+							 assert_equal("2The first line\n                               The second line\n                                 more", str)
+							 str = parsed[4].predicateObjectList[1].objectList[1].value
+							 assert_equal("3single quote string", str)
+							 str = parsed[5].predicateObjectList[1].objectList[1].value
+							 assert_equal("4triple single quote string", str)
 					   end)
 			end)
 end)

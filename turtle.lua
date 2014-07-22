@@ -76,12 +76,22 @@ function PredicateObject._new(predicate, objectList)
 end
 
 function TypedString._getCtor(datatype)
-   return function(value)
+   return function (value)
 	  return TypedString._new(datatype, value)
    end
 end
 
+function TypedString._processStringEscapes(str)
+   str = str:gsub('\\"', '"'):gsub('\\t', "\x09"):gsub('\\n', "\x0a"):gsub('\\r', "\x0d")
+   return str
+end
+
 function TypedString._new(datatype, value)
+   -- TODO need to handle iri and other PrefixedName instances
+   -- (non-reference identity)
+   if datatype == turtle.XsdStringName then
+	  value = TypedString._processStringEscapes(value)
+   end
    return _newObject(TypedString, {datatype=datatype, value=value})
 end
 
@@ -188,7 +198,11 @@ local STRING_LITERAL_SINGLE_QUOTE = P"'"*C((R"\x00\xff"-S"\x27\x5C\x0a\x0d"+ECHA
 local STRING_LITERAL_LONG_SINGLE_QUOTE = P"'''"*C(((P"'"+P"''")^-1*(R"\x00\xff"-S"'\\"+ECHAR+UCHAR))^0)*P"'''"
 
 -- [25]STRING_LITERAL_LONG_QUOTE::='"""' (('"' | '""')? ([^"\] | ECHAR | UCHAR))* '"""'
-local STRING_LITERAL_LONG_QUOTE = P'"""'*C(((P'"'+P'""')^-1*(R"\x00\xff"-S'"\\'+ECHAR+UCHAR))^0)*P'"""'
+local STRING_LITERAL_LONG_QUOTE = P'"""'*C(((P'"'+P'""')^-1*(re.compile('[^"\\]')+ECHAR+UCHAR))^0)*P'"""'
+
+-- [17]String::=STRING_LITERAL_QUOTE | STRING_LITERAL_SINGLE_QUOTE | STRING_LITERAL_LONG_SINGLE_QUOTE | STRING_LITERAL_LONG_QUOTE
+-- ***NOTE*** ORDER IS IMPORTANT HERE - long-quote forms have to come before single-quote forms
+local String = (STRING_LITERAL_LONG_SINGLE_QUOTE+STRING_LITERAL_LONG_QUOTE+STRING_LITERAL_QUOTE+STRING_LITERAL_SINGLE_QUOTE)/TypedString._getCtor(turtle.XsdStringName)
 
 -- [4]prefixID::='@prefix' PNAME_NS IRIREF '.'
 local prefixID = P"@prefix"*JBWS*PNAME_NS*JBWS*IRIREF*JBWS0*P"."/Prefix._new
@@ -217,9 +231,6 @@ local predicate = iri
 -- [9]verb::=predicate | 'a'
 local verb = predicate+ (P"a"*Cc(turtle.RdfTypeIri))
    -- transform a -> rdf:type
-
--- [17]String::=STRING_LITERAL_QUOTE | STRING_LITERAL_SINGLE_QUOTE | STRING_LITERAL_LONG_SINGLE_QUOTE | STRING_LITERAL_LONG_QUOTE
-local String = (STRING_LITERAL_QUOTE+STRING_LITERAL_SINGLE_QUOTE+STRING_LITERAL_LONG_SINGLE_QUOTE+STRING_LITERAL_LONG_QUOTE)/TypedString._getCtor(turtle.XsdStringName)
 
 -- [16]NumericLiteral::=INTEGER | DECIMAL | DOUBLE
 local NumericLiteral = INTEGER+DECIMAL+DOUBLE
@@ -283,7 +294,6 @@ local turtleDoc = (JBWS0*statement*JBWS0)^0
 -- Public API --
 ----------------
 function turtle.parse(turtleString)
-   --_dump( {lpeg.match(turtleDoc, turtleString)})
    return {lpeg.match(turtleDoc, turtleString)}
 end
 
