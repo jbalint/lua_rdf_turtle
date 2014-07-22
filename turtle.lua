@@ -1,5 +1,7 @@
 -- Turtle - A module for working with Turtle (RDF) format data
 
+-- * TODO resolve relative IRIs according to current base IRI
+
 local turtle = {}
 
 local lpeg = require('lpeg')
@@ -22,17 +24,18 @@ local comment = P"#"*(R"\x00\xff"-S"\r\n")^0
 -- Internal API --
 ------------------
 local IriRef = {classname="IriRef"}
+local Bnode = {classname="Bnode"}
 local Prefix = {classname="Prefix"}
 local SpoTriple = {classname="SpoTriple"}
 local PrefixedName = {classname="PrefixedName"}
 local PredicateObject = {classname="PredicateObject"}
-local StringLiteral = {classname="StringLiteral"}
+local TypedString = {classname="TypedString"}
 
 local function _nodeType(obj)
    return getmetatable(obj).classname
 end
 
-local classes = {IriRef, Prefix, SpoTriple, PrefixedName, PredicateObject, StringLiteral}
+local classes = {IriRef, Bnode, Prefix, SpoTriple, PrefixedName, PredicateObject, TypedString}
 for idx, class in ipairs(classes) do
    class.__index = class
    class.nodeType = _nodeType
@@ -47,6 +50,10 @@ function IriRef._new(iri)
    return _newObject(IriRef, {iri=iri})
 end
 
+function Bnode._new(predicateObjectList)
+   return _newObject(Bnode, {predicateObjectList=predicateObjectList})
+end
+
 function Prefix._new(prefix, iriRef)
    return _newObject(Prefix, {prefix=prefix, iriRef=iriRef})
 end
@@ -59,12 +66,22 @@ function PrefixedName._new(prefix, name)
    return _newObject(PrefixedName, {prefix=prefix, name=name})
 end
 
+function PrefixedName:__tostring()
+   return string.format("%s:%s", self.prefix, self.name)
+end
+
 function PredicateObject._new(predicate, objectList)
    return _newObject(PredicateObject, {predicate=predicate, objectList=objectList})
 end
 
-function StringLiteral._new(value)
-   return _newObject(TypedString, {value=value, datatype="xsd:string"})
+function TypedString._getCtor(datatype)
+   return function(value)
+	  return TypedString._new(datatype, value)
+   end
+end
+
+function TypedString._new(datatype, value)
+   return _newObject(TypedString, {datatype=datatype, value=value})
 end
 
 local function _setBase(iriRef)
@@ -73,6 +90,7 @@ local function _setBase(iriRef)
 end
 
 turtle.RdfTypeIri = IriRef._new("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+turtle.XsdStringName = PrefixedName._new("xsd", "string")
 
 -------------------------------
 -- Productions for terminals --
@@ -196,7 +214,7 @@ local verb = predicate+ (P"a"*Cc(turtle.RdfTypeIri))
    -- transform a -> rdf:type
 
 -- [17]String::=STRING_LITERAL_QUOTE | STRING_LITERAL_SINGLE_QUOTE | STRING_LITERAL_LONG_SINGLE_QUOTE | STRING_LITERAL_LONG_QUOTE
-local String = (STRING_LITERAL_QUOTE+STRING_LITERAL_SINGLE_QUOTE+STRING_LITERAL_LONG_SINGLE_QUOTE+STRING_LITERAL_LONG_QUOTE)/StringLiteral._new
+local String = (STRING_LITERAL_QUOTE+STRING_LITERAL_SINGLE_QUOTE+STRING_LITERAL_LONG_SINGLE_QUOTE+STRING_LITERAL_LONG_QUOTE)/TypedString._getCtor(turtle.XsdStringName)
 
 -- [16]NumericLiteral::=INTEGER | DECIMAL | DOUBLE
 local NumericLiteral = INTEGER+DECIMAL+DOUBLE
@@ -219,7 +237,7 @@ local function makeGrammar(elem)
 			object = iri+BlankNode+V"collection"+V"blankNodePropertyList"+literal,
 
 			-- [14]blankNodePropertyList::='[' predicateObjectList ']'
-			blankNodePropertyList = P"["*JBWS0*V"predicateObjectList"*P"]",
+			blankNodePropertyList = P"["*JBWS0*(V"predicateObjectList"/Bnode._new)*P"]",
 
 			-- [7]predicateObjectList::=verb objectList (';' (verb objectList)?)*
 			predicateObject = (verb*JBWS*V"objectList")/PredicateObject._new,
