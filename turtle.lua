@@ -21,35 +21,58 @@ local comment = P"#"*(R"\x00\xff"-S"\r\n")^0
 ------------------
 -- Internal API --
 ------------------
-local function _newIriRef(iri)
-   return {type="IriRef", iri=iri}
-end
-local rdfTypeIri = _newIriRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+local IriRef = {classname="IriRef"}
+local Prefix = {classname="Prefix"}
+local SpoTriple = {classname="SpoTriple"}
+local PrefixedName = {classname="PrefixedName"}
+local PredicateObject = {classname="PredicateObject"}
+local StringLiteral = {classname="StringLiteral"}
 
-local function _newPrefix(prefix, iriRef)
-   return {type="Prefix", prefix=prefix, iriRef=iriRef}
+local function _nodeType(obj)
+   return getmetatable(obj).classname
+end
+
+local classes = {IriRef, Prefix, SpoTriple, PrefixedName, PredicateObject, StringLiteral}
+for idx, class in ipairs(classes) do
+   class.__index = class
+   class.nodeType = _nodeType
+end
+
+local function _newObject(class, base)
+   setmetatable(base, class)
+   return base
+end
+
+function IriRef._new(iri)
+   return _newObject(IriRef, {iri=iri})
+end
+
+function Prefix._new(prefix, iriRef)
+   return _newObject(Prefix, {prefix=prefix, iriRef=iriRef})
+end
+
+function SpoTriple._new(subject, predicateObjectList)
+   return _newObject(SpoTriple, {subject=subject, predicateObjectList=predicateObjectList})
+end
+
+function PrefixedName._new(prefix, name)
+   return _newObject(PrefixedName, {prefix=prefix, name=name})
+end
+
+function PredicateObject._new(predicate, objectList)
+   return _newObject(PredicateObject, {predicate=predicate, objectList=objectList})
+end
+
+function StringLiteral._new(value)
+   return _newObject(TypedString, {value=value, datatype="xsd:string"})
 end
 
 local function _setBase(iriRef)
    print("Setting base to ", iriRef.iri)
-   assert("NEED TO TEST THIS")
+   error("NEED TO TEST THIS")
 end
 
-local function _newSpoTriple(subject, predicateObjectList)
-   return {type="SpoTriple", subject=subject, predicateObjectList=predicateObjectList}
-end
-
-local function _newPrefixedName(prefix, name)
-   return {type="PrefixedName", prefix=prefix, name=name}
-end
-
-local function _newPredicateObject(predicate, objectList)
-   return {type="PredicateObject", predicate=predicate, objectList=objectList}
-end
-
-local function _newStringLiteral(value)
-   return {type="TypedString", value=value, datatype="xsd:string"}
-end
+turtle.RdfTypeIri = IriRef._new("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
 
 -------------------------------
 -- Productions for terminals --
@@ -103,7 +126,7 @@ local JBWS0 = WS^0 -- optional whitespace in the grammar added by me
 local ANON = P"["*WS^0*P"]"
 
 -- [18]IRIREF::='<' ([^#x00-#x20<>"{}|^`\] | UCHAR)* '>' /* #x00=NULL #01-#x1F=control codes #x20=space */
-local IRIREF = P"<"*((re.compile("[^\x00-\x20<>\"{}|^`\\]")+UCHAR)^0/_newIriRef)*P">"
+local IRIREF = P"<"*((re.compile("[^\x00-\x20<>\"{}|^`\\]")+UCHAR)^0/IriRef._new)*P">"
 
 -- [139s]PNAME_NS::=PN_PREFIX? ':'
 -- TODO verify it's correct
@@ -145,7 +168,7 @@ local STRING_LITERAL_LONG_SINGLE_QUOTE = P"'''"*C(((P"'"+P"''")^-1*(R"\x00\xff"-
 local STRING_LITERAL_LONG_QUOTE = P'"""'*C(((P'"'+P'""')^-1*(R"\x00\xff"-S'"\\'+ECHAR+UCHAR))^0)*P'"""'
 
 -- [4]prefixID::='@prefix' PNAME_NS IRIREF '.'
-local prefixID = P"@prefix"*JBWS*PNAME_NS*JBWS*IRIREF*JBWS0*P"."/_newPrefix
+local prefixID = P"@prefix"*JBWS*PNAME_NS*JBWS*IRIREF*JBWS0*P"."/Prefix._new
 
 -- [5]base::='@base' IRIREF '.'
 local base = P"@base"*JBWS*IRIREF*JBWS0*P"."/_setBase
@@ -154,10 +177,10 @@ local base = P"@base"*JBWS*IRIREF*JBWS0*P"."/_setBase
 local sparqlBase = P"BASE"*IRIREF/_setBase
 
 -- [6s]sparqlPrefix::="PREFIX" PNAME_NS IRIREF
-local sparqlPrefix = P"PREFIX"*PNAME_NS*IRIREF/_newPrefix
+local sparqlPrefix = P"PREFIX"*PNAME_NS*IRIREF/Prefix._new
 
 -- [136s]PrefixedName::=PNAME_LN | PNAME_NS
-local PrefixedName = (PNAME_LN+PNAME_NS)/_newPrefixedName
+local PrefixedName = (PNAME_LN+PNAME_NS)/PrefixedName._new
 
 -- [135s]iri::=IRIREF | PrefixedName
 local iri = IRIREF+PrefixedName
@@ -169,11 +192,11 @@ local BlankNode = BLANK_NODE_LABEL+ANON
 local predicate = iri
 
 -- [9]verb::=predicate | 'a'
-local verb = predicate+ (P"a"*Cc(rdfTypeIri))
+local verb = predicate+ (P"a"*Cc(turtle.RdfTypeIri))
    -- transform a -> rdf:type
 
 -- [17]String::=STRING_LITERAL_QUOTE | STRING_LITERAL_SINGLE_QUOTE | STRING_LITERAL_LONG_SINGLE_QUOTE | STRING_LITERAL_LONG_QUOTE
-local String = (STRING_LITERAL_QUOTE+STRING_LITERAL_SINGLE_QUOTE+STRING_LITERAL_LONG_SINGLE_QUOTE+STRING_LITERAL_LONG_QUOTE)/_newStringLiteral
+local String = (STRING_LITERAL_QUOTE+STRING_LITERAL_SINGLE_QUOTE+STRING_LITERAL_LONG_SINGLE_QUOTE+STRING_LITERAL_LONG_QUOTE)/StringLiteral._new
 
 -- [16]NumericLiteral::=INTEGER | DECIMAL | DOUBLE
 local NumericLiteral = INTEGER+DECIMAL+DOUBLE
@@ -199,7 +222,7 @@ local function makeGrammar(elem)
 			blankNodePropertyList = P"["*JBWS0*V"predicateObjectList"*P"]",
 
 			-- [7]predicateObjectList::=verb objectList (';' (verb objectList)?)*
-			predicateObject = (verb*JBWS*V"objectList")/_newPredicateObject,
+			predicateObject = (verb*JBWS*V"objectList")/PredicateObject._new,
 			predicateObjectList = Ct(V"predicateObject"*JBWS0*(P";"*JBWS0*(V"predicateObject"*JBWS0)^-1)^0),
 
 			-- [8]objectList::=object (',' object)*
@@ -219,8 +242,9 @@ local subject = iri+BlankNode+collection
 -- TODO c.f. ex. 23+24 for collection as subject
 
 -- [6]triples::=subject predicateObjectList | blankNodePropertyList predicateObjectList?
-local triples = subject*JBWS*predicateObjectList/_newSpoTriple
+local triples = subject*JBWS*predicateObjectList/SpoTriple._new
 +
+-- TODO
 blankNodePropertyList*JBWS0*predicateObjectList^-1
 
 -- [3]directive::=prefixID | base | sparqlPrefix | sparqlBase
@@ -236,7 +260,7 @@ local turtleDoc = (JBWS0*statement*JBWS0)^0
 -- Public API --
 ----------------
 function turtle.parse(turtleString)
-   _dump( {lpeg.match(turtleDoc, turtleString)})
+   --_dump( {lpeg.match(turtleDoc, turtleString)})
    return {lpeg.match(turtleDoc, turtleString)}
 end
 
@@ -255,18 +279,6 @@ if pcall(getfenv, 4) then
 else
     --print("Main file")
    --turtle.parseFile("project.ttl")
-end
-
-function test()
-   print("TESTING")
-   package.loaded.turtle = nil
-   require("turtle")
-   _dump({lpeg.match(PN_PREFIX, "exable")})
-   _dump({lpeg.match(PNAME_NS, "ex:")})
-   _dump({lpeg.match(PrefixedName, "ex:aa")})
-   _dump({lpeg.match(predicateObjectList, "a ex:jess")})
-   turtle.parse("ex:jess a ex:jess.")
-   turtle.parse("@prefix a: <123>. @prefix b: <456>. ex:jess a ex:jess.")
 end
 
 return turtle
