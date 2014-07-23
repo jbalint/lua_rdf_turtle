@@ -492,7 +492,17 @@ two \tquotes\ncool """.]])
 			end)
 end)
 
-describe("Serialization - SKIPPED", function ()
+describe("Serialization", function ()
+
+			context("Test document 1", function ()
+					   local test1 = 'vcard:anniversary rdf:type owl:DatatypeProperty;rdfs:comment "The date of marriage, or equivalent, of the object"^^xsd:string;rdfs:isDefinedBy <http://www.w3.org/2006/vcard/ns>;rdfs:label "anniversary"^^xsd:string;rdfs:range [rdf:type rdfs:Datatype;owl:unionOf ( xsd:dateTime xsd:gYear);];.\n'
+					   it("should work", function ()
+							 Massert_equal = assert_equal
+							 testParseAndSerialize(test1)
+							 Massert_equal = nil
+					   end)
+			end)
+
 			-- TODO: serialization tests are very incomplete
 			context("serialization", function ()
 					   it("should serialize unlabeled bnodes", function ()
