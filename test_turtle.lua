@@ -432,6 +432,28 @@ two \tquotes\ncool """.]])
 			end)
 
 			context("custom-typed strings", function ()
+					   it("should have some tests here; xx^^some:type")
+			end)
+
+			context("bnode subjects", function ()
+					   it("should parse bnode without predicate object list", function ()
+							 -- TopBraid serializes anonymous objects like this
+							 local s = turtle.parse[[ [ :pred :obj1, :obj2; a owl:Thing ].]]
+							 assert_equal("RdfDoc", s:nodeType())
+							 assert_equal(1, #s)
+							 local bnode = s[1]
+							 assert_equal("Bnode", bnode:nodeType())
+							 assert_equal(2, #bnode.predicateObjectList)
+							 local predObj = bnode.predicateObjectList[1]
+							 assert_equal(2, #predObj.objectList)
+							 assert_equal(":pred", tostring(predObj.predicate))
+							 assert_equal(":obj1", tostring(predObj.objectList[1]))
+							 assert_equal(":obj2", tostring(predObj.objectList[2]))
+							 predObj = bnode.predicateObjectList[2]
+							 assert_equal(turtle.RdfTypeIri, predObj.predicate)
+							 assert_equal(1, #predObj.objectList)
+							 assert_equal("owl:Thing", tostring(predObj.objectList[1]))
+					   end)
 			end)
 
 			-- language tags are recognized by the parser, but not

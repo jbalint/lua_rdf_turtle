@@ -41,6 +41,7 @@ local classes = {RdfDoc, IriRef, Bnode, Prefix, SpoTriple, PrefixedName, Predica
 for idx, class in ipairs(classes) do
    class.__index = class
    class.nodeType = _nodeType
+   turtle[class.classname] = class
 end
 
 local function _newObject(class, base)
@@ -489,6 +490,5 @@ else
     --print("Main file")
    --turtle.parseFile("project.ttl")
 end
-
 
 return turtle
